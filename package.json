@@ -1,18 +1,19 @@
 {
   "scripts": {
-    "demos-1d": "budo --live --open demos/1d.js"
+    "demos-1d": "budo --live --open demos/1d.js",
+    "test": "tape test.js"
   },
   "dependencies": {
     "budo": "^9.3.0",
-    "ctx-get-transform": "^1.1.0",
-    "ctx-translate-center": "^1.0.0",
     "debug": "^2.6.3",
-    "fc": "^1.5.2",
-    "gl-matrix-mat3": "^2.2.1-npm",
-    "gl-matrix-vec2": "^2.2.1-npm",
+    "fast-bitset": "^1.3.2",
     "ndarray": "^1.0.18"
   },
   "devDependencies": {
+    "ctx-get-transform": "^1.1.0",
+    "ctx-translate-center": "^1.0.0",
+    "gl-matrix-mat3": "^2.2.1-npm",
+    "gl-matrix-vec2": "^2.2.1-npm",
     "benchmark": "^2.1.4",
     "budo": "^9.4.7",
     "ctx-translate-center": "^1.0.0",
