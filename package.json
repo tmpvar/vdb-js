@@ -1,6 +1,7 @@
 {
   "scripts": {
     "demos-1d": "budo --live --open demos/1d.js",
+    "demos-2d": "budo --live --open demos/2d.js",
     "test": "tape test.js"
   },
   "dependencies": {
@@ -10,15 +11,15 @@
     "ndarray": "^1.0.18"
   },
   "devDependencies": {
-    "ctx-get-transform": "^1.1.0",
-    "ctx-translate-center": "^1.0.0",
-    "gl-matrix-mat3": "^2.2.1-npm",
-    "gl-matrix-vec2": "^2.2.1-npm",
     "benchmark": "^2.1.4",
     "budo": "^9.4.7",
+    "ctx-get-transform": "^1.1.0",
     "ctx-translate-center": "^1.0.0",
     "fc": "^1.5.2",
+    "gl-matrix-mat3": "^2.2.1-npm",
+    "gl-matrix-vec2": "^2.2.1-npm",
     "interval-intersection": "^1.0.0",
+    "js-beautify": "^1.6.14",
     "nyc": "^10.3.0",
     "tape": "^4.6.3"
   }

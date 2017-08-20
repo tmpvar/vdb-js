@@ -2,25 +2,17 @@ var ctx = require('fc')(render)
 var center = require('ctx-translate-center')
 var vdb = require('../vdb')
 var overlap = require('interval-intersection')
-var tree = vdb.createTree([5, 4, 3], 1)
+var tree = vdb([5, 4, 3], 1)
 
-// tree.set(16, 255)
-// tree.set(130, 255)
-// tree.set(4, 255)
-// tree.set(2056, 255)
-// tree.set(3056, 255)
-// tree.set(6500, 255)
-// tree.set(9000, 255)
-
-for (var i =0; i<10000; i+=10) {
-  tree.set(i, 1);//Math.sin(i/200) * 10 / Math.cos(i))
+for (var i = 0; i < 14000; i++) {
+  tree.set(i, -Math.abs(Math.sin(i/200) * i/10 - Math.sin(i/20) * Math.random() * 100 + Math.tan(i / 2) * i/1000))
 }
 
 function bcolor (percent, a) {
   return `hsla(${percent * 360}, 100%, 50%, ${a || 1})`
 }
 
-var scale = .1
+var scale = 0.1
 var translate = 0
 const mouse = {
   pos: [0, 0],
@@ -33,108 +25,127 @@ function render () {
   center(ctx)
 
   if (keys[39]) {
-    translate -= Math.pow(scale, .1) * 5
+    translate -= Math.pow(scale, 0.1) * 5
     ctx.dirty()
   }
 
   if (keys[37]) {
-    translate += Math.pow(scale, .1) * 5
+    translate += Math.pow(scale, 0.1) * 5
     ctx.dirty()
   }
 
   if (keys[38]) {
-    scale += scale * .05
+    scale += scale * 0.05
     ctx.dirty()
   }
 
   if (keys[40]) {
-    scale -= scale * .05
+    scale -= scale * 0.05
     ctx.dirty()
   }
 
   scale = Math.max(0.001, scale)
-  console.clear()
-
 
   const viewingInterval = [
-    (-translate + window.innerWidth * .25) / scale,
-    (-translate + window.innerWidth * .75) / scale
+    Math.floor((-translate + window.innerWidth * 0.25) / scale),
+    Math.ceil((-translate + window.innerWidth * 0.75) / scale)
   ]
 
-  console.log(viewingInterval, viewingInterval[1] - viewingInterval[0])
   ctx.strokeStyle = '#444'
-  ctx.strokeRect(-window.innerWidth/4, -window.innerHeight/2, window.innerWidth/2, window.innerHeight)
-  ctx.scale(scale, scale)
-  ctx.translate((-window.innerWidth/2 + translate) / scale, 0)
+  ctx.strokeRect(
+    -window.innerWidth / 4,
+    -window.innerHeight / 2,
+    window.innerWidth / 2,
+    window.innerHeight
+  )
 
-  tree.each(function (level0, start0) {
-    var level0interval = [start0 * level0.size(), (start0+1) * level0.size()]
-    if (!overlap(level0interval, viewingInterval)) {
+  ctx.translate(0, window.innerHeight / 2 - 20)
+  ctx.scale(scale, scale)
+  ctx.translate((-window.innerWidth / 2 + translate) / scale, 0)
+
+  const root = tree.slice(viewingInterval[0], viewingInterval[1])
+  var where = 0.0
+
+  const worldMouse = [0, 0]
+
+  ctx.pointToWorld(worldMouse, mouse.pos)
+
+  if (mouse.down) {
+    tree.set(worldMouse[0]|0, worldMouse[1])
+  }
+
+  renderLevel(root, viewingInterval, 0.0)
+}
+
+function renderLevel (parent, viewingInterval, color) {
+  parent.each((node) => {
+    const start = node.position[0]
+    var interval = [
+      start,
+      start + node.size()
+    ]
+
+    if (!overlap(interval, viewingInterval)) {
       return
     }
 
     ctx.save()
-      renderNode(start0, level0.size(), bcolor(0))
-      level0.each(function (level1, start1) {
-        var level1interval = [
-          level0interval[0] + start1 * level1.size(),
-          level0interval[0] + (start1+1) * level1.size()
-        ]
-        if (!overlap(level1interval, viewingInterval)) {
-          return
-        }
-        ctx.save()
-          renderNode(start1, level1.size(), bcolor(.25))
-          level1.each(function (level2, start2) {
-
-            var level2interval = [
-              level1interval[0] + start2 * level2.size() - 1,
-              level1interval[0] + (start2+1) * level2.size() +1
-            ]
-
-            if (!overlap(level2interval, viewingInterval)) {
-              return
-            }
-
-            ctx.save()
-              renderNode(start2, level2.size(), bcolor(.5))
-
-              ctx.fillStyle = bcolor(.75)
-              for (var i=0; i<8; i++) {
-                ctx.translate(1, 0)
-                var val = level2.get(i) ? 10 : 0;
-                if (val) {
-                  ctx.fillRect(0.25, -.25, .5, -7.5)
-                }
-              }
-            ctx.restore()
-          })
-        ctx.restore()
-
-      })
+      renderNodeBracket(start, node.size(), bcolor(color))
     ctx.restore()
+
+    if (node.leaf) {
+      ctx.save()
+      ctx.translate(start, 0)
+        renderVoxels(node, color + 0.25)
+      ctx.restore()
+      return
+    }
+
+
+
+    renderLevel(node, viewingInterval, color + 0.25)
   })
 }
 
-function renderNode (start, size, color) {
-  ctx.translate(start * size, 0)
-  ctx.strokeStyle = color
-  ctx.lineWidth = 1/scale
-  ctx.strokeRect(1, 0, size, -size)
+function renderVoxels (node, color) {
+  // ctx.translate(position, 0)
+  ctx.strokeStyle = bcolor(color)
+  ctx.beginPath()
+  ctx.lineWidth = 1
+  node.each((voxel, i) => {
+    ctx.moveTo(i, 0)
+    ctx.lineTo(i, voxel)
+  })
+  ctx.stroke()
 }
 
-window.addEventListener('mousewheel', function(e) {
+function renderNodeBracket (start, size, color) {
+  ctx.translate(start, 0)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1 / scale
+  ctx.beginPath()
+  ctx.moveTo(0, -300)
+  ctx.lineTo(0, 0)
+  ctx.lineTo(size, 0)
+  ctx.lineTo(size, -300)
+  // ctx.strokeRect(1, 0, size, -size)
+  ctx.stroke()
+}
+
+window.addEventListener('mousewheel', (e) => {
   scale -= e.deltaY / 1000
-  scale = Math.max(.001, scale)
+  scale = Math.max(0.001, scale)
   e.preventDefault()
   ctx.dirty()
 })
 
-window.addEventListener('mousedown', () => mouse.down = true)
-window.addEventListener('mouseup', () => mouse.down = false)
+window.addEventListener('mousedown', () => { mouse.down = true; ctx.dirty() })
+window.addEventListener('mouseup', () => { mouse.down = false })
 window.addEventListener('mousemove', (e) => {
+  mouse.pos[0] = e.clientX
+  mouse.pos[1] = e.clientY
   if (mouse.down) {
-    console.log('draw')
+    ctx.dirty()
   }
 })
 

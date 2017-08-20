@@ -17,6 +17,7 @@ function genPositionIndex (dimensions, mask, shift) {
 
 function nodeConfig (base, dimensions, baseSum) {
   const width = Math.pow(2, base)
+  const aggregateWidth = Math.pow(2, base + baseSum)
   const size = Math.pow(width, dimensions)
   const mask = (1 << base) - 1
 
@@ -25,6 +26,7 @@ function nodeConfig (base, dimensions, baseSum) {
   return {
     base,
     width,
+    aggregateWidth,
     size,
     mask,
     posArgsArray,
@@ -40,9 +42,11 @@ function defCreateLeafNode (base, dimensions) {
   const code = `
   const ndarraySize = [${c.dataWidth.join(', ')}]
 
-  function createLeafNode () {
+  function createLeafNode (position) {
     return {
+      position: position.map((a) => (a >> ${base}) << ${base}),
       mask: new BitSet(${c.size}),
+      leaf: true,
       value: ndarray(new Float32Array(${c.size}), ndarraySize),
 
       set (${c.posArgs}, value) {
@@ -56,8 +60,18 @@ function defCreateLeafNode (base, dimensions) {
       },
 
       size () {
-        return ${c.size}
-      }
+        return ${c.width}
+      },
+
+      each (fn) {
+        const nodes = this.value.data
+        const nodeCount = nodes.length
+        for (var i = 0; i < nodeCount; i++) {
+          if (nodes[i]) {
+            fn(nodes[i], i)
+          }
+        }
+      },
     }
   }
 
@@ -70,12 +84,16 @@ function defCreateLeafNode (base, dimensions) {
 
 function defCreateInternalNode (base, dimensions, baseSum) {
   const c = nodeConfig(base, dimensions, baseSum)
+
   const code = `
   const ndarraySize = [${c.dataWidth.join(', ')}]
   const childBaseSum = ${c.base} + childCtor.baseSum
+  const size = Math.pow(2, childBaseSum)
 
-  function createInternalNode (createLeafNode) {
+  function createInternalNode (position) {
+
     return {
+      position: position.map((a) => (a >> childBaseSum) << childBaseSum),
       mask: new BitSet(${c.size}),
       active: new BitSet(${c.size}),
       value: ndarray(Array(${c.size}), ndarraySize),
@@ -85,7 +103,7 @@ function defCreateInternalNode (base, dimensions, baseSum) {
         const data = this.value.data
 
         if (!data[index]) {
-          data[index] = childCtor()
+          data[index] = childCtor([${c.posArgs}])
         }
 
         data[index].set(${c.posArgs}, value)
@@ -104,8 +122,18 @@ function defCreateInternalNode (base, dimensions, baseSum) {
         return data[index].get(${c.posArgs})
       },
 
+      each (fn) {
+        const nodes = this.value.data
+        const nodeCount = nodes.length
+        for (var i = 0; i < nodeCount; i++) {
+          if (nodes[i]) {
+            fn(nodes[i], i)
+          }
+        }
+      },
+
       size () {
-        return ${c.size}
+        return size
       }
     }
   }
@@ -118,30 +146,70 @@ function defCreateInternalNode (base, dimensions, baseSum) {
   return code
 }
 
+module.exports = createTree
+
 function createTree (levelConfig, dimensions) {
-  const leafSource = defCreateLeafNode(levelConfig.pop(), dimensions)
-  const createLeafNode = (
-    new Function('ndarray', 'BitSet', leafSource)
-  )(ndarray, BitSet)
+  const nodeCtors = []
 
-  var nodeCtor = createLeafNode
   for (var i = 0; i < levelConfig.length; i++) {
-    var internalSource = defCreateInternalNode(
-      levelConfig[i],
-      dimensions,
-      nodeCtor.baseSum
-    )
+    let base = levelConfig[levelConfig.length - (i + 1)]
 
-    nodeCtor = (
-      new Function('ndarray', 'BitSet', 'childCtor', internalSource)
-    )(ndarray, BitSet, nodeCtor)
+    if (i === 0) {
+      let leafSource = defCreateLeafNode(base, dimensions)
+      nodeCtors.unshift((
+        new Function('ndarray', 'BitSet', leafSource)
+      )(ndarray, BitSet))
+    } else {
+      let previousCtor = nodeCtors[0]
+      let internalSource = defCreateInternalNode(
+        base,
+        dimensions,
+        previousCtor.baseSum
+      )
+
+      nodeCtors.unshift((
+        new Function('ndarray', 'BitSet', 'childCtor', internalSource)
+      )(ndarray, BitSet, previousCtor))
+    }
   }
+
+
+  const nodeCtor = nodeCtors[0]
 
   const c = nodeConfig(levelConfig[0], dimensions, nodeCtor.baseSum)
 
+  const baseSum = nodeCtor.baseSum
+
   const indexString = '`' + c.posArgsArray.map((a) => {
-    return '${' + a + '}'
+    return '${' + a + `>> ${baseSum}}`
   }).join('-') + '`'
+
+  // slice
+  const indexStringInLoop = '`' + c.posArgsArray.map((a) => {
+    return '${i' + a + '}'
+  }).join('-') + '`'
+
+  const upperBoundArgsArray = c.posArgsArray.map((a) => {
+    return `${a}Upper`
+  })
+
+  const lowerBoundsClamped = c.posArgsArray.map((a) => {
+    return `const ${a}lb = ${a} >> ${baseSum}`
+  })
+
+  const upperBoundsClamped = c.posArgsArray.map((a) => {
+    return `const ${a}ub = ${a}Upper >> ${baseSum}`
+  })
+
+  const forLoops = c.posArgsArray.map((a) => {
+    return `for (var i${a} = ${a}lb; i${a} <= ${a}ub; i${a}++) {`
+  })
+
+  const forLoopsEnd = c.posArgsArray.map((a) => {
+    return `}`
+  })
+
+  const upperBoundArgs = upperBoundArgsArray.join(', ')
 
   const code = `
     return {
@@ -150,121 +218,178 @@ function createTree (levelConfig, dimensions) {
         const index = ${indexString}
         const nodes = this.nodes
 
-        if (!nodes[index]) {
-          nodes[index] = nodeCtor()
+        if (!nodes.has(index)) {
+          nodes.set(index, nodeCtor([${c.posArgs}]))
         }
 
-        nodes[index].set(${c.posArgs}, value)
+        nodes.get(index).set(${c.posArgs}, value)
       },
       get (${c.posArgs}, value) {
         const index = ${indexString}
         const nodes = this.nodes
 
-        if (!nodes[index]) {
+        if (!nodes.has(index)) {
           return
         }
 
-        return nodes[index].get(${c.posArgs})
+        return nodes.get(index).get(${c.posArgs})
+      },
+      slice (${c.posArgs}, ${upperBoundArgs}) {
+        // TODO: until a better storage algorithm is employed,
+        //       generate string indicies
+        const nodes = this.nodes
+        ${lowerBoundsClamped.join('\n        ')}
+        ${upperBoundsClamped.join('\n        ')}
+
+        const out = treeCtor()
+        ${forLoops.join('\n        ')}
+          let key = ${indexStringInLoop}
+          if (nodes.has(key)) {
+            out.nodes.set(key, nodes.get(key))
+          }
+        ${forLoopsEnd.join('\n        ')}
+        return out
+      },
+      each (fn) {
+        this.nodes.forEach(fn)
       },
     }
   `
 
-  const tree = (
-    new Function('nodeCtor', code)
-  )(nodeCtor)
+  const treeCtor = (
+    new Function('nodeCtor', 'treeCtor', code)
+  )
+
+  const tree = treeCtor(nodeCtor, treeCtor)
 
   return tree
 }
 
-test('genPositionArgs', (t) => {
-  t.deepEqual(genPositionArgs(1), ['a'])
-  t.deepEqual(genPositionArgs(2), ['a', 'b'])
-  t.deepEqual(genPositionArgs(3), ['a', 'b', 'c'])
-  t.deepEqual(genPositionArgs(4), ['a', 'b', 'c', 'd'])
+const tree = createTree([5, 4, 3], 2)
+tree.set(100, 100, 5)
+/*
+if (!module.parent) {
+  test('genPositionArgs', (t) => {
+    t.deepEqual(genPositionArgs(1), ['a'])
+    t.deepEqual(genPositionArgs(2), ['a', 'b'])
+    t.deepEqual(genPositionArgs(3), ['a', 'b', 'c'])
+    t.deepEqual(genPositionArgs(4), ['a', 'b', 'c', 'd'])
 
-  t.end()
-})
+    t.end()
+  })
 
-test('genPositionIndex', (t) => {
-  t.deepEqual(genPositionIndex(1, 'mask'), ['a & mask'])
-  t.deepEqual(genPositionIndex(2, 'mask'), ['a & mask', 'b & mask'])
-  t.deepEqual(genPositionIndex(3, 'mask'), ['a & mask', 'b & mask', 'c & mask'])
-  t.deepEqual(genPositionIndex(4, 'mask'), ['a & mask', 'b & mask', 'c & mask', 'd & mask'])
+  test('genPositionIndex', (t) => {
+    t.deepEqual(genPositionIndex(1, 'mask'), ['a & mask'])
+    t.deepEqual(genPositionIndex(2, 'mask'), ['a & mask', 'b & mask'])
+    t.deepEqual(genPositionIndex(3, 'mask'), ['a & mask', 'b & mask', 'c & mask'])
+    t.deepEqual(genPositionIndex(4, 'mask'), ['a & mask', 'b & mask', 'c & mask', 'd & mask'])
 
-  t.end()
-})
+    t.end()
+  })
 
-test('defCreateLeafNode (1d float)', (t) => {
-  const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
+  test('defCreateLeafNode (1d float)', (t) => {
+    const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
 
-  const leaf = createLeafNode1D()
-  leaf.set(5, 2.50)
-  t.equal(leaf.get(5), 2.5)
-  t.equal(leaf.get(0), 0)
-  t.equal(leaf.get(1), 0)
+    const leaf = createLeafNode1D()
+    leaf.set(5, 2.50)
+    t.equal(leaf.get(5), 2.5)
+    t.equal(leaf.get(0), 0)
+    t.equal(leaf.get(1), 0)
 
-  t.end()
-})
+    t.end()
+  })
 
-test('defCreateLeafNode (2d float)', (t) => {
-  const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
+  test('defCreateLeafNode (2d float)', (t) => {
+    const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
 
-  const leaf = createLeafNode2D()
-  leaf.set(5, 2, 2.50)
-  t.equal(leaf.get(5, 2), 2.5)
-  t.equal(leaf.get(0, 2), 0)
-  t.equal(leaf.get(0, 7), 0)
+    const leaf = createLeafNode2D()
+    leaf.set(5, 2, 2.50)
+    t.equal(leaf.get(5, 2), 2.5)
+    t.equal(leaf.get(0, 2), 0)
+    t.equal(leaf.get(0, 7), 0)
 
-  t.end()
-})
+    t.end()
+  })
 
-test('defCreateLeafNode (3d float)', (t) => {
-  const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
+  test('defCreateLeafNode (3d float)', (t) => {
+    const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
 
-  const leaf = createLeafNode2D()
-  leaf.set(5, 2, 2.50)
-  t.equal(leaf.get(5, 2), 2.5)
-  t.equal(leaf.get(0, 2), 0)
-  t.equal(leaf.get(0, 7), 0)
+    const leaf = createLeafNode2D()
+    leaf.set(5, 2, 2.50)
+    t.equal(leaf.get(5, 2), 2.5)
+    t.equal(leaf.get(0, 2), 0)
+    t.equal(leaf.get(0, 7), 0)
 
-  t.end()
-})
+    t.end()
+  })
 
-test('defCreateInternalNode (1d float)', (t) => {
+  test('defCreateInternalNode (1d float)', (t) => {
 
-  const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
-  const createInternalNode1D = (new Function('ndarray', 'BitSet', 'childCtor', defCreateInternalNode(4, 1, createLeafNode1D.baseSum)))(ndarray, BitSet, createLeafNode1D)
+    const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
+    const createInternalNode1D = (new Function('ndarray', 'BitSet', 'childCtor', defCreateInternalNode(4, 1, createLeafNode1D.baseSum)))(ndarray, BitSet, createLeafNode1D)
 
-  const node = createInternalNode1D()
-  const data = node.value.data
+    const node = createInternalNode1D()
+    const data = node.value.data
 
-  for (var i = 0; i < Math.pow(2, 4 + 3); i++) {
-    node.set(i, i + 1)
-    t.equal(node.get(i), i + 1)
+    for (var i = 0; i < Math.pow(2, 4 + 3); i++) {
+      node.set(i, i + 1)
+      t.equal(node.get(i), i + 1)
 
-    var idx = Math.floor(i / 8)
-    t.ok(data[idx])
-    t.ok(data[idx].mask.get(i % 8))
-    t.notOk(data[idx].mask.get((i % 8) + 1))
-  }
+      var idx = Math.floor(i / 8)
+      t.ok(data[idx])
+      t.ok(data[idx].mask.get(i % 8))
+      t.notOk(data[idx].mask.get((i % 8) + 1))
+    }
 
-  node.set(1, 0.5)
-  node.set(12, 0.5)
+    node.set(1, 0.5)
+    node.set(12, 0.5)
 
-  t.equal(node.get(12), 0.5)
-  t.ok(node.mask.get(0))
-  t.ok(node.value.data[0].mask.get(1))
-  t.ok(node.value.data[1].mask.get(4))
+    t.equal(node.get(12), 0.5)
+    t.ok(node.mask.get(0))
+    t.ok(node.value.data[0].mask.get(1))
+    t.ok(node.value.data[1].mask.get(4))
 
-  t.end()
-})
+    t.end()
+  })
 
-test.only('createTree', (t) => {
-  const tree = createTree([5, 4, 3], 2)
+  test('createTree', (t) => {
+    const tree = createTree([5, 4, 3], 2)
 
-  tree.set(4985732, 12393023, 0.5)
-  t.notOk(tree.get(0, 0))
-  t.equal(tree.get(4985732, 12393023), 0.5)
+    tree.set(4985732, 12393023, 0.5)
+    t.notOk(tree.get(0, 0))
+    t.equal(tree.get(4985732, 12393023), 0.5)
 
-  t.end()
-})
+    t.end()
+  })
+
+  test.only('Tree#slice', (t) => {
+    const tree = createTree([5, 4, 3], 2)
+
+    tree.set(10, 10, 0.5)
+    tree.set(5000, 5000, 0.2)
+
+    t.deepEqual(
+      Array.from(tree.slice(0, 0, 100, 100).nodes.keys()),
+      ['0-0']
+    )
+
+    t.deepEqual(
+      Array.from(tree.slice(0, 0, 100000, 100000).nodes.keys()),
+      ['0-0', '1-1']
+    )
+
+    t.deepEqual(
+      Array.from(tree.slice(4097, 4097, 100000, 100000).nodes.keys()),
+      ['1-1']
+    )
+
+    t.deepEqual(
+      Array.from(tree.slice(100000, 100000, 0, 0).nodes.keys()),
+      [],
+      'does not work backwards'
+    )
+
+    t.end()
+  })
+}
+*/
