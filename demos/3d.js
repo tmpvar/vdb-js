@@ -21,7 +21,10 @@ var projection = mat4.create()
 var MVP = mat4.create()
 var v3scratch = vec3.create()
 
-fillSphere(16)
+fillSphere(16, [0,0,0])
+fillSphere(8, [45,0,0])
+fillSphere(4, [45,45,0])
+
 
 console.log(tree)
 
@@ -183,7 +186,7 @@ function renderVoxels (node, color, w, h, MVP) {
     for (var y = 0; y < shape[1]; y++) {
       for (var z = 0; z < shape[2]; z++) {
         var v = node.value.get(x, y, z)
-        if (v > 0 || v < -1.0) {
+        if (v == 0 || v > 0.5) {
           continue
         }
         
@@ -203,7 +206,7 @@ function renderVoxels (node, color, w, h, MVP) {
         ctx.arc(
           v3scratch[0],
           v3scratch[1],
-          10 * 1 - (d / MAX_DISTANCE),//1/Math.min(w, h) * d * 1 / Math.tan(FOV/2.0),
+          2 * 1 - (d / MAX_DISTANCE),//1/Math.min(w, h) * d * 1 / Math.tan(FOV/2.0),
           0,
           Math.PI*2,
           false
@@ -248,17 +251,17 @@ function resize(w, h) {
   )
 }
 
-function fillSphere(radius) {
+function fillSphere(radius, pos) {
   for  (var x=-radius; x<radius; x++) {
     v3scratch[0] = x
     for  (var y=-radius; y<radius; y++) {
       v3scratch[1] = y
       for  (var z=-radius; z<radius; z++) {
         v3scratch[2] = z
-        var d = vec3.length(v3scratch) - radius
-        if (d <= 0) {
-          tree.set(x, y, z, d)
-        }
+        var d = vec3.length(v3scratch) - radius 
+        //if (d <= 0.1) {
+          tree.set(pos[0] + x, pos[1] + y, pos[2] + z, d <= 0 ? Math.abs(d) : 0)
+        //}
       }
     }
   }
