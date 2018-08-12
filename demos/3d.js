@@ -259,9 +259,9 @@ function fillSphere(radius, pos) {
       for  (var z=-radius; z<radius; z++) {
         v3scratch[2] = z
         var d = vec3.length(v3scratch) - radius 
-        //if (d <= 0.1) {
+        if (d <= 0.1) {
           tree.set(pos[0] + x, pos[1] + y, pos[2] + z, d <= 0 ? Math.abs(d) : 0)
-        //}
+        }
       }
     }
   }
