@@ -27,8 +27,6 @@ fillSphere(4, [45,45,0])
 fillSphere(16, [400,90,0])
 fillSphere(16, [90,400,0])
 
-console.log(tree)
-
 function bcolor (percent, a) {
   return `hsla(${percent * 360}, 100%, 50%, ${a || 1})`
 }
@@ -136,17 +134,18 @@ function renderVoxels (node, color, w, h, MVP) {
     for (var y = 0; y < shape[1]; y++) {
       for (var z = 0; z < shape[2]; z++) {
         var v = node.value.get(x, y, z)
-        if (v == 0 || v > 0.5) {
+        if (v == 0 || v >= 1.0) {
           continue
         }
         
         vec3.set(v3scratch, pos[0] + x + 0.5, pos[1] + y + 0.5, pos[2] + z + 0.5)
 
 
-        var d = vec3.distance(v3scratch, camera.eye)
         if (!transformPoint(v3scratch, v3scratch, w, h, MVP)) {
           continue
         }
+
+        var d = vec3.distance(v3scratch, camera.eye)
         // TODO: ensure voxel is inside viewing box
         ctx.beginPath()
         ctx.arc(
@@ -208,8 +207,8 @@ function fillSphere(radius, pos) {
       for  (var z=-radius; z<radius; z++) {
         v3scratch[2] = z
         var d = vec3.length(v3scratch) - radius 
-        if (d <= 0.1) {
-          tree.set(pos[0] + x, pos[1] + y, pos[2] + z, d <= 0 ? Math.abs(d) : 0)
+        if (d <= 0.0) {
+          tree.set(pos[0] + x, pos[1] + y, pos[2] + z, d <= 0.0 ? Math.abs(d) : 0)
         }
       }
     }
