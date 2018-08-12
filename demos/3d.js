@@ -93,69 +93,18 @@ function renderNode(node, color, w, h, MVP) {
   var pos = node.position
   var size = node.size()
 
-  transformPoint(
-    octpoint[0],
-    vec3.set(v3scratch, pos[0], pos[1], pos[2]),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[1],
-    vec3.set(v3scratch,pos[0], pos[1] + size, pos[2] ),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[2],
-    vec3.set(v3scratch,pos[0] + size, pos[1] + size, pos[2]),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[3],
-    vec3.set(v3scratch,pos[0] + size, pos[1], pos[2]),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[4],
-    vec3.set(v3scratch,pos[0], pos[1], pos[2] + size),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[5],
-    vec3.set(v3scratch, pos[0], pos[1] + size, pos[2] + size),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[6],
-    vec3.set(v3scratch, pos[0] + size, pos[1] + size, pos[2] + size),
-    w,
-    h,
-    MVP
-  )
-
-  transformPoint(
-    octpoint[7],
-    vec3.set(v3scratch, pos[0] + size, pos[1], pos[2] + size),
-    w,
-    h,
-    MVP
-  )
+  if (
+    !transformPoint(octpoint[0], vec3.set(v3scratch, pos[0], pos[1], pos[2]), w, h, MVP) ||
+    !transformPoint(octpoint[1], vec3.set(v3scratch,pos[0], pos[1] + size, pos[2] ), w, h, MVP) ||
+    !transformPoint(octpoint[2], vec3.set(v3scratch,pos[0] + size, pos[1] + size, pos[2]), w, h, MVP) ||
+    !transformPoint(octpoint[3], vec3.set(v3scratch,pos[0] + size, pos[1], pos[2]), w, h, MVP) ||
+    !transformPoint(octpoint[4], vec3.set(v3scratch,pos[0], pos[1], pos[2] + size), w, h, MVP) ||
+    !transformPoint(octpoint[5], vec3.set(v3scratch, pos[0], pos[1] + size, pos[2] + size), w, h, MVP) ||
+    !transformPoint(octpoint[6], vec3.set(v3scratch, pos[0] + size, pos[1] + size, pos[2] + size), w, h, MVP) ||
+    !transformPoint(octpoint[7], vec3.set(v3scratch, pos[0] + size, pos[1], pos[2] + size), w, h, MVP)
+  ) {
+    return
+  }
   ctx.beginPath()
     vmove(octpoint[0])
     vline(octpoint[1])
@@ -195,13 +144,9 @@ function renderVoxels (node, color, w, h, MVP) {
 
 
         var d = vec3.distance(v3scratch, camera.eye)
-        transformPoint(
-          v3scratch,
-          v3scratch,
-          w,
-          h,
-          MVP
-        )
+        if (!transformPoint(v3scratch, v3scratch, w, h, MVP)) {
+          continue
+        }
         // TODO: ensure voxel is inside viewing box
         ctx.beginPath()
         ctx.arc(
@@ -236,10 +181,13 @@ var v4scratch = vec4.create()
 function transformPoint(out, pos, w, h, mvp) {
   vec4.set(v4scratch, pos[0], pos[1], pos[2], 1.0)
   vec4.transformMat4(v4scratch, v4scratch, mvp)
+  if (v4scratch[3] < 0) {
+    return false
+  }
   out[0] = (v4scratch[0] / v4scratch[3]) * w
   out[1] = (v4scratch[1] / v4scratch[3]) * h
   out[2] = (v4scratch[2] / v4scratch[3])
-  return out
+  return true
 }
 
 function resize(w, h) {
