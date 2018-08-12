@@ -146,17 +146,7 @@ function renderVoxels (node, color, w, h, MVP) {
         }
 
         var d = vec3.distance(v3scratch, camera.eye)
-        // TODO: ensure voxel is inside viewing box
-        ctx.beginPath()
-        ctx.arc(
-          v3scratch[0],
-          v3scratch[1],
-          2 * 1 - (d / MAX_DISTANCE),//1/Math.min(w, h) * d * 1 / Math.tan(FOV/2.0),
-          0,
-          Math.PI*2,
-          false
-        )
-        ctx.fill()
+        ctx.fillRect(v3scratch[0], v3scratch[1], 1, 1)
       }
     }
   }
