@@ -24,7 +24,8 @@ var v3scratch = vec3.create()
 fillSphere(16, [0,0,0])
 fillSphere(8, [45,0,0])
 fillSphere(4, [45,45,0])
-
+fillSphere(16, [400,90,0])
+fillSphere(16, [90,400,0])
 
 console.log(tree)
 
@@ -61,7 +62,7 @@ function renderLevel (parent, color, w, h, MVP) {
     var d = vec3.distance(camera.eye, v3scratch)
 
     const terminate = radius < 1/Math.min(w, h) * d * Math.tan(FOV/2.0)
-    renderNode(node, bcolor(color), w, h, MVP)
+    renderNode(node, color, w, h, MVP)
 
     if (terminate) {
       return //renderNode(node, bcolor(color), w, h, MVP)
@@ -88,7 +89,7 @@ var octpoint = [
 ]
 
 function renderNode(node, color, w, h, MVP) {
-  ctx.strokeStyle = ctx.fillStyle = color
+  ctx.strokeStyle = ctx.fillStyle = bcolor(color, .10)
   var pos = node.position
   var size = node.size()
 
