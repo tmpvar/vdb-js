@@ -267,7 +267,7 @@ function createTree (levelConfig, dimensions) {
 
 const tree = createTree([5, 4, 3], 2)
 tree.set(100, 100, 5)
-/*
+
 if (!module.parent) {
   test('genPositionArgs', (t) => {
     t.deepEqual(genPositionArgs(1), ['a'])
@@ -288,9 +288,10 @@ if (!module.parent) {
   })
 
   test('defCreateLeafNode (1d float)', (t) => {
+    console.log(defCreateLeafNode(3, 1))
     const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
 
-    const leaf = createLeafNode1D()
+    const leaf = createLeafNode1D([0])
     leaf.set(5, 2.50)
     t.equal(leaf.get(5), 2.5)
     t.equal(leaf.get(0), 0)
@@ -302,7 +303,7 @@ if (!module.parent) {
   test('defCreateLeafNode (2d float)', (t) => {
     const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
 
-    const leaf = createLeafNode2D()
+    const leaf = createLeafNode2D([0, 0])
     leaf.set(5, 2, 2.50)
     t.equal(leaf.get(5, 2), 2.5)
     t.equal(leaf.get(0, 2), 0)
@@ -314,7 +315,7 @@ if (!module.parent) {
   test('defCreateLeafNode (3d float)', (t) => {
     const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
 
-    const leaf = createLeafNode2D()
+    const leaf = createLeafNode2D([0, 0, 0])
     leaf.set(5, 2, 2.50)
     t.equal(leaf.get(5, 2), 2.5)
     t.equal(leaf.get(0, 2), 0)
@@ -328,7 +329,7 @@ if (!module.parent) {
     const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
     const createInternalNode1D = (new Function('ndarray', 'BitSet', 'childCtor', defCreateInternalNode(4, 1, createLeafNode1D.baseSum)))(ndarray, BitSet, createLeafNode1D)
 
-    const node = createInternalNode1D()
+    const node = createInternalNode1D([0, 0, 0])
     const data = node.value.data
 
     for (var i = 0; i < Math.pow(2, 4 + 3); i++) {
@@ -362,7 +363,7 @@ if (!module.parent) {
     t.end()
   })
 
-  test.only('Tree#slice', (t) => {
+  test('Tree#slice', (t) => {
     const tree = createTree([5, 4, 3], 2)
 
     tree.set(10, 10, 0.5)
@@ -392,4 +393,3 @@ if (!module.parent) {
     t.end()
   })
 }
-*/
