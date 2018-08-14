@@ -268,7 +268,7 @@ function createTree (levelConfig, dimensions) {
 const tree = createTree([5, 4, 3], 2)
 tree.set(100, 100, 5)
 
-if (!module.parent) {
+if (!module.parent && typeof window === 'undefined') {
   test('genPositionArgs', (t) => {
     t.deepEqual(genPositionArgs(1), ['a'])
     t.deepEqual(genPositionArgs(2), ['a', 'b'])
