@@ -39,6 +39,6 @@ Use the arrow keys to zoom / pan. Data can be modified by clicking the mouse
 npm run demos-3d
 ```
 
-![3d-vdb-js](![vdbjs-3d](https://user-images.githubusercontent.com/46673/44068048-0e8ab4f6-9f2d-11e8-80ef-ec00a46fc81c.gif)
+![vdbjs-3d](https://user-images.githubusercontent.com/46673/44068048-0e8ab4f6-9f2d-11e8-80ef-ec00a46fc81c.gif)
 
 Use the mouse to control the orbit camera: drag to orient and scroll to zoom
