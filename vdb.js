@@ -1,5 +1,6 @@
 const BitSet = require('fast-bitset')
 const ndarray = require('ndarray')
+var a = ndarray(new Float32Array(27), [3, 3, 3])
 
 const test = require('tape')
 
@@ -46,13 +47,30 @@ function defCreateLeafNode (base, dimensions) {
     return {
       position: position.map((a) => (a >> ${base}) << ${base}),
       mask: new BitSet(${c.size}),
+      active: new BitSet(${c.size}),
+      activeCount: 0,
       leaf: true,
+      // TODO: don't assume the user wants the array filled with 1
       value: ndarray(new Float32Array(${c.size}), ndarraySize),
 
-      set (${c.posArgs}, value) {
+      set (${c.posArgs}, value, active) {
         const index = this.value.index(${c.posIndex})
-        value ? this.mask.set(index) : this.mask.unset(index)
+        this.mask.set(index)
         this.value.data[index] = value
+
+
+        var currentlyActive = this.active.get(index)
+        if (active) {
+          if (!currentlyActive) {
+            this.activeCount++
+            this.active.set(index)
+          }
+        } else {
+          if (currentlyActive) {
+            this.activeCount--
+            this.active.unset(index)
+          }
+        }
       },
 
       get (${c.posArgs}) {
@@ -63,13 +81,32 @@ function defCreateLeafNode (base, dimensions) {
         return ${c.width}
       },
 
+      isActive() {
+        return this.activeCount > 0
+      },
+
+      eachActive (fn) {
+        const a = this.value
+        const nodes = a.data
+
+        var i = this.active.ffs()
+        while (i !== -1) {
+          // TODO: optimize this
+          var x = Math.floor(i / a.stride[0]) % a.shape[0]
+          var y = Math.floor(i / a.stride[1]) % a.shape[1]
+          var z = i % a.shape[2]
+
+          fn(nodes[i], i, x, y, z)
+          i = this.active.nextSetBit(i+1)
+        }
+      },
+
       each (fn) {
         const nodes = this.value.data
-        const nodeCount = nodes.length
-        for (var i = 0; i < nodeCount; i++) {
-          if (nodes[i]) {
-            fn(nodes[i], i)
-          }
+        var i = this.mask.ffs()
+        while (i !== -1) {
+          fn(nodes[i], i)
+          i = this.mask.nextSetBit(i+1)
         }
       },
     }
@@ -91,14 +128,15 @@ function defCreateInternalNode (base, dimensions, baseSum) {
   const size = Math.pow(2, childBaseSum)
 
   function createInternalNode (position) {
-
+    // TODO: generate less garbage w.r.t. position.map
     return {
       position: position.map((a) => (a >> childBaseSum) << childBaseSum),
       mask: new BitSet(${c.size}),
       active: new BitSet(${c.size}),
+      activeCount: 0,
       value: ndarray(Array(${c.size}), ndarraySize),
 
-      set (${c.posArgs}, value) {
+      set (${c.posArgs}, value, active) {
         const index = this.value.index(${c.posIndex})
         const data = this.value.data
 
@@ -106,9 +144,33 @@ function defCreateInternalNode (base, dimensions, baseSum) {
           data[index] = childCtor([${c.posArgs}])
         }
 
-        data[index].set(${c.posArgs}, value)
+        this.mask.set(index)
 
-        value ? this.mask.set(index) : this.mask.unset(index)
+        var currentlyActive = this.active.get(index)
+        if (active) {
+          if (!currentlyActive) {
+            this.activeCount++
+          }
+
+          this.active.set(index)
+        }
+
+        data[index].set(${c.posArgs}, value, active)
+
+        // Wait until after we've applied the active state to the child before removing any
+        // active bits. Each one of our active bits represents a rolled up view for all of
+        // our child nodes. If we blindly remove the active bit for this index we will likely
+        // orphan a bunch of active grandchild nodes.
+        if (!data[index].isActive()) {
+          if (currentlyActive) {
+            this.activeCount--
+          }
+          this.active.unset(index)
+        }
+      },
+
+      isActive() {
+        return this.activeCount > 0
       },
 
       get (${c.posArgs}) {
@@ -122,13 +184,21 @@ function defCreateInternalNode (base, dimensions, baseSum) {
         return data[index].get(${c.posArgs})
       },
 
+      eachActive (fn) {
+        const nodes = this.value.data
+        var i = this.active.ffs()
+        while (i !== -1) {
+          fn(nodes[i], i)
+          i = this.active.nextSetBit(i+1)
+        }
+      },
+
       each (fn) {
         const nodes = this.value.data
-        const nodeCount = nodes.length
-        for (var i = 0; i < nodeCount; i++) {
-          if (nodes[i]) {
-            fn(nodes[i], i)
-          }
+        var i = this.mask.ffs()
+        while (i !== -1) {
+          fn(nodes[i], i)
+          i = this.mask.nextSetBit(i+1)
         }
       },
 
@@ -166,18 +236,14 @@ function createTree (levelConfig, dimensions) {
         dimensions,
         previousCtor.baseSum
       )
-
       nodeCtors.unshift((
         new Function('ndarray', 'BitSet', 'childCtor', internalSource)
       )(ndarray, BitSet, previousCtor))
     }
   }
 
-
   const nodeCtor = nodeCtors[0]
-
   const c = nodeConfig(levelConfig[0], dimensions, nodeCtor.baseSum)
-
   const baseSum = nodeCtor.baseSum
 
   const indexString = '`' + c.posArgsArray.map((a) => {
@@ -214,7 +280,7 @@ function createTree (levelConfig, dimensions) {
   const code = `
     return {
       nodes: new Map(),
-      set (${c.posArgs}, value) {
+      set (${c.posArgs}, value, active) {
         const index = ${indexString}
         const nodes = this.nodes
 
@@ -222,7 +288,7 @@ function createTree (levelConfig, dimensions) {
           nodes.set(index, nodeCtor([${c.posArgs}]))
         }
 
-        nodes.get(index).set(${c.posArgs}, value)
+        nodes.get(index).set(${c.posArgs}, value, active)
       },
       get (${c.posArgs}, value) {
         const index = ${indexString}
@@ -233,6 +299,9 @@ function createTree (levelConfig, dimensions) {
         }
 
         return nodes.get(index).get(${c.posArgs})
+      },
+      isActive() {
+        return true
       },
       slice (${c.posArgs}, ${upperBoundArgs}) {
         // TODO: until a better storage algorithm is employed,
@@ -250,6 +319,9 @@ function createTree (levelConfig, dimensions) {
         ${forLoopsEnd.join('\n        ')}
         return out
       },
+      eachActive (fn) {
+        this.nodes.forEach(fn)
+      },
       each (fn) {
         this.nodes.forEach(fn)
       },
@@ -264,9 +336,6 @@ function createTree (levelConfig, dimensions) {
 
   return tree
 }
-
-const tree = createTree([5, 4, 3], 2)
-tree.set(100, 100, 5)
 
 if (!module.parent && typeof window === 'undefined') {
   test('genPositionArgs', (t) => {
@@ -288,7 +357,6 @@ if (!module.parent && typeof window === 'undefined') {
   })
 
   test('defCreateLeafNode (1d float)', (t) => {
-    console.log(defCreateLeafNode(3, 1))
     const createLeafNode1D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 1)))(ndarray, BitSet)
 
     const leaf = createLeafNode1D([0])
@@ -389,6 +457,25 @@ if (!module.parent && typeof window === 'undefined') {
       [],
       'does not work backwards'
     )
+
+    t.end()
+  })
+
+  test('active', (t) => {
+    const tree = createTree([5, 4, 3], 1)
+    tree.set(-32, 9, true)
+    tree.set(-33, 9, false)
+
+    var found = 0
+    tree.eachActive((n, i) => {
+      t.equal(n.isActive(), true)
+      n.eachActive((n2, i2) => {
+        found++
+        t.equal(true, n2.isActive())
+      })
+    })
+
+    t.equal(found, 1)
 
     t.end()
   })
