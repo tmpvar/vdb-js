@@ -3,6 +3,7 @@
     "demos-1d": "budo --live --open demos/1d.js",
     "demos-2d": "budo --live --open demos/2d.js",
     "demos-3d": "budo --live --open demos/3d.js",
+    "demos-3d-regl": "budo --live --open demos/3d-regl.js",
     "test": "tape test.js"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "js-beautify": "^1.6.14",
     "nyc": "^10.3.0",
     "orbiter": "^1.0.2",
+    "regl": "^1.3.7",
     "tape": "^4.6.3"
   }
 }

@@ -82,7 +82,7 @@ function renderLevel (parent, color, w, h, MVP) {
     var d = vec3.distance(camera.eye, v3scratch)
 
     const terminate = radius < 1/Math.min(w, h) * d * Math.tan(FOV/2.0)
-    renderNode(node, color, w, h, MVP)
+    //renderNode(node, color, w, h, MVP)
 
     if (terminate) {
       return
@@ -199,7 +199,7 @@ function fillSphere(radius, pos) {
       for  (var z=-radius; z<radius; z++) {
         v3scratch[2] = z
         var v = vec3.length(v3scratch) - radius
-        var active = v <= 0 && v > -1
+        var active = v <= 0.0 && v > -1.0
         tree.set(
           px,
           py,
