@@ -1,6 +1,7 @@
 {
   "name":"@tmpvar/vdb-js",
   "version": "1.0.0",
+  "main":"vdb.js",
   "scripts": {
     "demos-1d": "budo --live --open demos/1d.js",
     "demos-2d": "budo --live --open demos/2d.js",
