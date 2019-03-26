@@ -1,4 +1,6 @@
 {
+  "name":"tmpvar/vdb-js",
+  "version": "1.0.0",
   "scripts": {
     "demos-1d": "budo --live --open demos/1d.js",
     "demos-2d": "budo --live --open demos/2d.js",
@@ -7,7 +9,6 @@
     "test": "tape test.js"
   },
   "dependencies": {
-    "budo": "^9.3.0",
     "debug": "^2.6.3",
     "fast-bitset": "^1.3.2",
     "ndarray": "^1.0.18"
