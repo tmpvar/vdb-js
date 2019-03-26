@@ -1,5 +1,5 @@
 {
-  "name":"tmpvar/vdb-js",
+  "name":"@tmpvar/vdb-js",
   "version": "1.0.0",
   "scripts": {
     "demos-1d": "budo --live --open demos/1d.js",
