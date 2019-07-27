@@ -9,7 +9,7 @@ var gl = regl._gl
 var vdb = require('../vdb')
 var tree = vdb([5, 4, 2], 3)
 const MAX_DISTANCE = 10000
-const FOV = Math.PI/4
+const FOV = Math.PI/2
 
 var camera = createCamera(gl.canvas, {
   eye: [0, 0, -100],
@@ -36,105 +36,17 @@ var octpoint = [
 ]
 
 var sphereOffset = 128
-for (var x = -1; x <=1; x++) {
-  for (var y = -1; y <=1; y++) {
-    for (var z = -1; z <=1; z++) {
-      if (x === 0 && y === 0 && z === 0) {
-        continue
-      }
-      fillSphere(64, [sphereOffset * x, sphereOffset * y, sphereOffset * z])
+var r = 4
+for (var x = -r; x <=r; x++) {
+  for (var y = -r; y <=r; y++) {
+    for (var z = -r; z <=r; z++) {
+      fillSphere(16, [sphereOffset * x, sphereOffset * y, sphereOffset * z])
     }
   }
 }
 
-function render() {
-  camera.tick()
-
-  regl.clear({
-    depth: true,
-    color: [0, 0, 0, 1]
-  })
-
-  renderLevel(tree, 0.75, gl.canvas.width, gl.canvas.height, MVP)
-}
-
-function renderLevel (parent, w, h, color) {
-  parent.eachActive((node) => {
-    var size = node.size()
-    var radius = size / 2;
-    vec3.add(v3scratch, node.position, vec3.set(v3scratch, radius, radius, radius))
-    var d = vec3.distance(camera.eye, v3scratch)
-
-    const terminate = false//size < 1/Math.min(w, h) * d * 1/Math.tan(FOV/2.0)
-    //renderNode(node, color, w, h, MVP)
-
-    if (terminate) {
-      return renderNode(node, color, w, h, MVP)
-    }
-
-    if (node.leaf) {
-      renderVoxels(node, color + 0.25, w, h, MVP)
-      return
-    }
-
-    renderLevel(node, color + 0.25, w, h, MVP)
-  })
-}
-
-const renderNodeLines = regl({
-  frag: `
-    precision mediump float;
-    uniform vec4 color;
-    void main() {
-      gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
-    }`,
-
-  vert: `
-    precision mediump float;
-    uniform mat4 mvp;
-    uniform vec3 corner;
-    uniform float size;
-    varying vec3 position;
-
-    void main () {
-      gl_PointSize = 3.0;
-      gl_Position = mvp * vec4(position * size / 2.0 + corner, 1);
-    }
-  `,
-
-  uniforms: {
-    corner: regl.prop('corner'),
-    size: regl.prop('size'),
-    mvp: ({viewportWidth, viewportHeight}) => {
-      mat4.perspective(
-        projection,
-        Math.PI / 2,
-        viewportWidth / viewportHeight,
-        0.01,
-        100000
-      )
-      mat4.multiply(MVP, projection, camera.matrix)
-      return MVP
-    }
-  },
-
-  attributes: {
-    position: [
-      [0, 0, 0],
-      [0, 0, 1],
-      [0, 1, 0],
-      [0, 1, 1],
-      [1, 0, 0],
-      [1, 0, 1],
-      [1, 1, 0],
-      [1, 1, 1]
-    ]
-  },
-  primitive: 'points',
-  lineWidth: Math.min(regl.limits.lineWidthDims[1], 3),
-  count: 12
-})
-
+var splatBuffer
+const splatData = []
 
 const renderSplats = regl({
   frag: `
@@ -147,18 +59,16 @@ const renderSplats = regl({
   vert: `
     precision mediump float;
     uniform mat4 mvp;
-    uniform vec3 corner;
-    varying vec3 position;
+    attribute vec3 position;
 
     void main () {
       gl_PointSize = 3.0;
-      gl_Position = mvp * vec4(position + corner, 1);
+      gl_Position = mvp * vec4(position, 1);
     }
   `,
 
   uniforms: {
-    corner: regl.prop('corner'),
-    mvp: ({viewportWidth, viewportHeight}) => {
+      mvp: ({viewportWidth, viewportHeight}) => {
       mat4.perspective(
         projection,
         Math.PI / 2,
@@ -175,31 +85,55 @@ const renderSplats = regl({
     position: regl.prop('position')
   },
   primitive: 'points',
-  count: regl.prop('primitiveCount')
+  count: regl.prop('primitiveCount'),
 })
 
-function renderVoxels(node, color, w, h, MVP) {
+function render() {
+  camera.tick()
 
-  if (!node.cachedPositionBuffer) {
-    var data = []
-    node.eachActive((v, i, x, y, z) => {
-      data.push([x, y, z])
-    })
-    node.cachedPositionBuffer = regl.buffer(data)
+  regl.clear({
+    depth: true,
+    color: [0, 0, 0, 1]
+  })
+
+  if (!splatBuffer) {
+    renderLevel(tree, 0.75, gl.canvas.width, gl.canvas.height, MVP, splatData)
+    splatBuffer = regl.buffer(splatData)
   }
 
   renderSplats({
-    position: node.cachedPositionBuffer,
-    corner: node.position,
-    primitiveCount: node.cachedPositionBuffer.length
+    position: splatBuffer,
+    primitiveCount: splatData.length / 3
   })
 }
 
-function renderNode(node, color, w, h, MVP) {
-  renderNodeLines({
-    corner: node.position,
-    size: 1000,
-    mvp: MVP
+function renderLevel (parent, w, h, color, MVP, data) {
+  parent.eachActive((node) => {
+    var size = node.size()
+    var radius = size / 2;
+    vec3.add(v3scratch, node.position, vec3.set(v3scratch, radius, radius, radius))
+    var d = vec3.distance(camera.eye, v3scratch)
+
+    const terminate = false//size < 1/Math.min(w, h) * d * 1/Math.tan(FOV/2.0)
+
+    if (terminate) {
+      return;
+    }
+
+    if (node.leaf) {
+      renderVoxels(node, color + 0.25, w, h, MVP, data)
+      return
+    }
+
+    renderLevel(node, w, h, color + 0.25, MVP, data)
+  })
+}
+
+function renderVoxels(node, color, w, h, MVP, data) {
+  node.eachActive((v, i, x, y, z) => {
+    data.push(node.position[0] + x)
+    data.push(node.position[1] + y)
+    data.push(node.position[2] + z)
   })
 }
 
