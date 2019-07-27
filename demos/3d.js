@@ -5,6 +5,7 @@ var vec4 = require('gl-matrix-vec4')
 var center = require('ctx-translate-center')
 var ctx = require('fc')(render, 1)
 
+document.body.style.background = "#112"
 var vdb = require('../vdb')
 var tree = vdb([5, 4, 2], 3)
 const MAX_DISTANCE = 10000
@@ -53,7 +54,18 @@ function bcolor (percent, a) {
   return `hsla(${percent * 360}, 100%, 50%, ${a || 1})`
 }
 
+var count = 0;
+var frame = 0;
+setInterval(() => {
+  console.log("fps", frame, "splats", Math.ceil(count/frame))
+  frame = 0
+  count = 0
+}, 1000)
+
+var imageData;
+
 function render() {
+  frame++;
   const w = ctx.canvas.width
   const h = ctx.canvas.height
   resize(w, h)
@@ -71,10 +83,32 @@ function render() {
   /* TODO:
   - recursive AABB vs Frustum against the entire tree
   */
-  renderLevel(tree, 0.75, w, h, MVP)
+  if (!imageData) {
+    ctx.createImageData(w, h);
+    imageData.pending = new Uint8ClampedArray(w*h*4);
+  }
+
+  for (var i = 3; i<w*h*4; i+=4) {
+    imageData.pending[i] = 0;
+  }
+  renderLevel(tree, 0.75, w, h, MVP, imageData)
+  imageData.data.set(imageData.pending)
+  ctx.putImageData(imageData, 0, 0)
 }
 
-function renderLevel (parent, color, w, h, MVP) {
+function setPixel(id, x, y, r, g, b, a) {
+  const off = (x + y * id.width) * 4
+  id.pending[off + 0] = r
+  id.pending[off + 1] = g
+  id.pending[off + 2] = b
+  id.pending[off + 3] = a
+}
+
+function getPixel(id, x, y, channel) {
+  return id.pending[(x + y * id.width) * 4 + channel]
+}
+
+function renderLevel (parent, color, w, h, MVP, id) {
   parent.eachActive((node) => {
     var size = node.size()
     var radius = size / 2;
@@ -89,11 +123,11 @@ function renderLevel (parent, color, w, h, MVP) {
     }
 
     if (node.leaf) {
-      renderVoxels(node, color + 0.25, w, h, MVP)
+      renderVoxels(node, color + 0.25, MVP, id)
       return
     }
 
-    renderLevel(node, color + 0.25, w, h, MVP)
+    renderLevel(node, color + 0.25, w, h, MVP, id)
   })
 }
 
@@ -134,21 +168,32 @@ function renderNode(node, color, w, h, MVP) {
     ctx.stroke()
 }
 
-function renderVoxels (node, color, w, h, MVP) {
+function renderVoxels (node, color, MVP, id) {
   const start = node.position
   ctx.fillStyle = ctx.strokeStyle = bcolor(color)
-
+  const w = id.width
+  const h = id.height
   const pos = node.position
   const shape = node.value.shape
 
   node.eachActive((v, i, x, y, z) => {
-    vec3.set(v3scratch, pos[0] + x + 0.5, pos[1] + y + 0.5, pos[2] + z + 0.5)
+    vec3.set(v3scratch, pos[0] + x, pos[1] + y, pos[2] + z)
     if (!transformPoint(v3scratch, v3scratch, w, h, MVP)) {
       return
     }
 
-    ctx.fillRect(v3scratch[0], v3scratch[1], 2, 2)
+    var px = (v3scratch[0] + w/2)|0
+    var py = (v3scratch[1] + h/2)|0
+    var pz = (255 * v3scratch[2])|0
+
+    if (pz < getPixel(id, px, py, 3) || px < 0 || py < 0 || px >= w || py >= h) {
+      return
+    }
+
+    setPixel(id, px+x, py+y, 255, 255, 255, pz)
+    count++;
   })
+
 }
 
 function vmove(v) {
@@ -184,6 +229,9 @@ function resize(w, h) {
     0.01,
     10000
   )
+
+  imageData = ctx.createImageData(w, h);
+  imageData.pending = new Uint8ClampedArray(w*h*4);
 }
 
 function fillSphere(radius, pos) {
