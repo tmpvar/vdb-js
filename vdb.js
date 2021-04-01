@@ -381,13 +381,17 @@ if (!module.parent && typeof window === 'undefined') {
   })
 
   test('defCreateLeafNode (3d float)', (t) => {
-    const createLeafNode2D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 2)))(ndarray, BitSet)
+    const createLeafNode3D = (new Function('ndarray', 'BitSet', defCreateLeafNode(3, 3)))(ndarray, BitSet)
 
-    const leaf = createLeafNode2D([0, 0, 0])
-    leaf.set(5, 2, 2.50)
-    t.equal(leaf.get(5, 2), 2.5)
-    t.equal(leaf.get(0, 2), 0)
-    t.equal(leaf.get(0, 7), 0)
+    const leaf = createLeafNode3D([0, 0, 0])
+    leaf.set(5, 2, 1, 2.50)
+    t.equal(leaf.get(5, 2, 1), 2.5)
+    t.equal(leaf.get(0, 2, 0), 0)
+    t.equal(leaf.get(0, 7, 0), 0)
+    t.equal(leaf.get(0, 0, 1), 0)
+    t.equal(leaf.get(0, 0, 3), 0)
+    t.equal(leaf.get(0, 2, 1), 0)
+    t.equal(leaf.get(0, 7, 3), 0)
 
     t.end()
   })
